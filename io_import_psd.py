@@ -1,12 +1,39 @@
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTIBILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+bl_info = {
+    "name" : "Import PSD Images",
+    "author" : "Kumopult <kumopult@qq.com>",
+    "description" : "将PSD或PSB文件分层导入为网格",
+    "blender" : (2, 93, 0),
+    "version" : (0, 0, 1),
+    "location" : "File > Import > Import PSD",
+    "warning" : "本插件依赖psd-tools库运行, 请先依照文档说明安装依赖",
+    "category" : "Import-Export",
+    "doc_url": "https://github.com/kumopult/blender_ImportPSD",
+    "tracker_url": "https://space.bilibili.com/1628026",
+    # VScode调试：Ctrl + Shift + P
+}
+
 import bpy
 from bpy_extras.image_utils import load_image
 from mathutils import Vector, Matrix
-from psd_tools import PSDImage
 from PIL import Image
+from psd_tools import PSDImage
 
 class PSD_OT_Import(bpy.types.Operator):
     bl_idname = 'import_psd.import'
-    bl_label = '导入分层PSD'
+    bl_label = 'PSD (.psd/.psb)'
     bl_options = {'REGISTER', 'PRESET', 'UNDO'}
 
     # ----------------------
@@ -93,18 +120,12 @@ class PSD_OT_Import(bpy.types.Operator):
             self.obj = bpy.data.objects.new(self.layer.name, mesh)
             self.obj.location = Vector([
                 self.layer.left * size, 
-                self.index * -size,
+                self.index * -0.01,
                 self.layer.top * -size
             ])
             return self.obj
     
-        def pack_uv(self, mat):
-            # coords = [
-            #     (self.x / size[0], self.y / -size[1] + 1),
-            #     (self.x / size[0], (self.y + self.h) / -size[1] + 1),
-            #     ((self.x + self.w) / size[0], (self.y + self.h) / -size[1] + 1),
-            #     ((self.x + self.w) / size[0], self.y / -size[1] + 1)
-            # ]
+        def pack_uv(self, matrix):
             coords = Matrix([
                 [self.x, self.y, 1],
                 [self.x, self.y + self.h, 1],
@@ -113,14 +134,12 @@ class PSD_OT_Import(bpy.types.Operator):
             ])
             uv_layer = self.obj.data.uv_layers.new()
             for i, loop in enumerate(self.obj.data.loops):
-                # uv_layer.data[i].uv = coords[loop.vertex_index]
-                uv_layer.data[i].uv = tuple(mat @ coords[loop.vertex_index])
+                uv_layer.data[i].uv = tuple(matrix @ coords[loop.vertex_index])
 
     # ----------------------
     # 功能函数
     def pack(self, rects, size):
         rects.sort(key=lambda x:x.weight, reverse=True)
-        # empty_spaces = [self.Space(0, 0, size[0], size[1])]
         empty_spaces = [self.Space(self.pack_border, self.pack_border, size[0] - self.pack_border, size[1] - self.pack_border)]
         
         for rect in rects:
@@ -135,7 +154,7 @@ class PSD_OT_Import(bpy.types.Operator):
                     fit_flag = True
                     break
             if not fit_flag:
-                print('Over Size!')
+                print('Over Size:' + str(size))
                 return False
 
         print('Fit Size:' + str(size))
@@ -204,17 +223,17 @@ class PSD_OT_Import(bpy.types.Operator):
             colle.objects.link(obj)
             rect.pack_uv(uv_matrix)
 
-
     # ----------------------
     # UI绘制
     def draw(self, context):
         layout = self.layout
-        layout.prop(self, 'align_center')
-        layout.prop(self, 'pixel_size')
-        layout.prop(self, 'pack_border')
-        layout.prop(self, 'interpolation')
-        layout.prop(self, 'blend_method')
-
+        box = layout.box()
+        box.prop(self, 'pixel_size')
+        box.prop(self, 'pack_border')
+        box.prop(self, 'align_center')
+        box = layout.box()
+        box.prop(self, 'interpolation')
+        box.prop(self, 'blend_method')
 
     # ----------------------
     # 功能执行
@@ -230,7 +249,6 @@ class PSD_OT_Import(bpy.types.Operator):
                 print(file.name + '不是psd或psb文件')
 
         return {'FINISHED'}
-
 
 # ----------------------
 # 注册
@@ -253,5 +271,3 @@ def unregister():
         bpy.utils.unregister_class(cls)
     bpy.types.TOPBAR_MT_file_import.remove(import_psd_button)
     print('goodbye kumopult!')
-
-register()
