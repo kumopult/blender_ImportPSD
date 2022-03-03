@@ -46,9 +46,10 @@ class PSD_OT_Import(bpy.types.Operator):
 
     # ----------------------
     # 导入设置
-    align_center : bpy.props.BoolProperty(name='图像居中', default=True)
-    pixel_size : bpy.props.FloatProperty(name='像素尺寸', description='图像每像素对应的尺寸', default=0.01)
-    pack_border : bpy.props.IntProperty(name='图集边距', description='打包图集时各个图块间的间隔像素数', default=0)
+    align_center : bpy.props.BoolProperty(name='图像居中', default=True, description='让导入图像的中心对齐世界原点, 若取消勾选则是左上角对齐世界原点')
+    pixel_size : bpy.props.FloatProperty(name='像素尺寸', default=0.01, description='图像每像素对应的尺寸')
+    layer_height : bpy.props.FloatProperty(name='图层间距', default=0.01, description='图层网格的前后间距')
+    pack_margin : bpy.props.IntProperty(name='图集边距', default=0, description='打包图集时各个图块间的间隔像素数, 适当留出可防止边缘混色')
     
     interpolation : bpy.props.EnumProperty(
         name='纹理插值',
@@ -106,7 +107,7 @@ class PSD_OT_Import(bpy.types.Operator):
             self.x = x
             self.y = y
         
-        def create_mesh(self, size):
+        def create_mesh(self, size, height):
             mesh = bpy.data.meshes.new(self.layer.name)
             p1 = (            0, 0,              0)
             p2 = (            0, 0, self.h * -size)
@@ -120,7 +121,7 @@ class PSD_OT_Import(bpy.types.Operator):
             self.obj = bpy.data.objects.new(self.layer.name, mesh)
             self.obj.location = Vector([
                 self.layer.left * size, 
-                self.index * -0.01,
+                self.index * -height,
                 self.layer.top * -size
             ])
             return self.obj
@@ -140,7 +141,7 @@ class PSD_OT_Import(bpy.types.Operator):
     # 功能函数
     def pack(self, rects, size):
         rects.sort(key=lambda x:x.weight, reverse=True)
-        empty_spaces = [self.Space(self.pack_border, self.pack_border, size[0] - self.pack_border, size[1] - self.pack_border)]
+        empty_spaces = [self.Space(self.pack_margin, self.pack_margin, size[0] - self.pack_margin, size[1] - self.pack_margin)]
         
         for rect in rects:
             fit_flag = False
@@ -174,8 +175,8 @@ class PSD_OT_Import(bpy.types.Operator):
         for layer in src_psd.descendants():
             if not layer.is_group():
                 rect = self.Rect(layer, len(packed_rects))
-                rect.w += self.pack_border
-                rect.h += self.pack_border
+                rect.w += self.pack_margin
+                rect.h += self.pack_margin
                 packed_rects.append(rect)
         
         while not self.pack(packed_rects, pack_size):
@@ -211,13 +212,13 @@ class PSD_OT_Import(bpy.types.Operator):
         colle = bpy.data.collections.new(psd_name)
         bpy.context.collection.children.link(colle)
         co_offset = Vector([-src_psd.width, 0, src_psd.height]) * 0.5 * self.pixel_size if self.align_center else Vector([0, 0, 0])
-        co_offset += Vector([-0.5, 0, 0.5]) * self.pack_border * self.pixel_size
+        co_offset += Vector([-0.5, 0, 0.5]) * self.pack_margin * self.pixel_size
         uv_matrix = Matrix([
-            [1 / pack_size[0], 0, - self.pack_border * 0.5 / pack_size[0]],
-            [0, -1 / pack_size[1], 1 + self.pack_border * 0.5 / pack_size[1]]
+            [1 / pack_size[0], 0, - self.pack_margin * 0.5 / pack_size[0]],
+            [0, -1 / pack_size[1], 1 + self.pack_margin * 0.5 / pack_size[1]]
         ])
         for rect in packed_rects:
-            obj = rect.create_mesh(self.pixel_size)
+            obj = rect.create_mesh(self.pixel_size, self.layer_height)
             obj.data.materials.append(mat)
             obj.location += co_offset
             colle.objects.link(obj)
@@ -228,10 +229,13 @@ class PSD_OT_Import(bpy.types.Operator):
     def draw(self, context):
         layout = self.layout
         box = layout.box()
+        box.label(text='网格设置', icon='MESH_GRID')
         box.prop(self, 'pixel_size')
-        box.prop(self, 'pack_border')
+        box.prop(self, 'layer_height')
+        box.prop(self, 'pack_margin')
         box.prop(self, 'align_center')
         box = layout.box()
+        box.label(text='材质设置', icon='MATERIAL_DATA')
         box.prop(self, 'interpolation')
         box.prop(self, 'blend_method')
 
